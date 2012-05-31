@@ -13,6 +13,8 @@
 #include<linux/if_ether.h>
 #include<linux/if_packet.h>
 
+#define MAGIC 12
+
 char *  LOG_IP= "\x0a\x00\x02\x02";
 char *  LOOP_BACK="\x7f\x00\x00\x01";
 MODULE_LICENSE("GPL");
@@ -48,20 +50,20 @@ unsigned int my_func(unsigned int hooknum,struct sk_buff *skb,const struct net_d
   if(!skb)
     return NF_ACCEPT;
 
-  if(ih->saddr == LOG_IP){
-    printk("Caught a packet from the host\n");
-    count ++;
-    
-  }
-  else  if(strcmp(ih->saddr,LOOP_BACK))
-    return NF_ACCEPT;
-  else if (ih->protocol!=IPPROTO_ICMP){
+    printk("Caught Packet from %pI4\n",&(ih->saddr));
+  //if(ih->saddr == LOG_IP){
+  //printk("Caught a packet from the host\n");
+  // count ++;
+  // }
+  //if(strcmp(ih->saddr,LOOP_BACK))
+  //  return NF_ACCEPT;
+  if (ih->protocol!=IPPROTO_ICMP){
     return NF_ACCEPT;
   }
   //else{
   //return NF_ACCEPT;
   //}
-
+  
     icmp_header=icmp_hdr(skb);
     printk("Caught a ICMP packet\n");
     printk("type:%d\n",icmp_header->type);
@@ -71,34 +73,35 @@ unsigned int my_func(unsigned int hooknum,struct sk_buff *skb,const struct net_d
     }
     printk("source:%pI4\n",&(ih->saddr));  
     printk("dest:%pI4\n",&(ih->daddr));
-    daddr=ih->saddr;
-    ih->saddr=ih->daddr;
-    ih->daddr=daddr;
-    skb->pkt_type=PACKET_OUTGOING;
-    switch(skb->dev->type){
-    case ARPHRD_PPP:
-      break;
-    case ARPHRD_LOOPBACK:
-    case ARPHRD_ETHER:
-      {
-	unsigned char t_hwaddr[ETH_ALEN];
-	skb->data=(unsigned char*)skb_mac_header(skb);
-
-	skb->len+=ETH_HLEN;
-	memcpy(t_hwaddr,((struct ethhdr*)(skb_mac_header(skb)))->h_dest,ETH_ALEN);
-	memcpy(((struct ethhdr*)(skb_mac_header(skb)))->h_dest, ((struct ethhdr*)(skb_mac_header(skb)))->h_source,ETH_ALEN);
-	memcpy(((struct ethhdr*)(skb_mac_header(skb)))->h_source, t_hwaddr, ETH_ALEN);  
-	
-	dev_queue_xmit(skb);
-	return NF_STOLEN;
+    //Process the Pocket only if code ==MAGIC
+    if(icmp_header->code==MAGIC){
+      daddr=ih->saddr;
+      ih->saddr=ih->daddr;
+      ih->daddr=daddr;
+      skb->pkt_type=PACKET_OUTGOING;
+      switch(skb->dev->type){
+      case ARPHRD_PPP:
 	break;
+      case ARPHRD_LOOPBACK:
+      case ARPHRD_ETHER:
+	{
+	  unsigned char t_hwaddr[ETH_ALEN];
+	  skb->data=(unsigned char*)skb_mac_header(skb);
+	  
+	  skb->len+=ETH_HLEN;
+	  memcpy(t_hwaddr,((struct ethhdr*)(skb_mac_header(skb)))->h_dest,ETH_ALEN);
+	  memcpy(((struct ethhdr*)(skb_mac_header(skb)))->h_dest, ((struct ethhdr*)(skb_mac_header(skb)))->h_source,ETH_ALEN);
+	  memcpy(((struct ethhdr*)(skb_mac_header(skb)))->h_source, t_hwaddr, ETH_ALEN);  
+	  
+	  dev_queue_xmit(skb);
+	  return NF_STOLEN;
+	  break;
+	}
       }
-
-      }
+      
+    }
     return NF_ACCEPT;
-
-
-  
+     
 }
 
 
